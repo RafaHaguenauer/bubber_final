@@ -1,0 +1,101 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  phone     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  rides     Ride[]
+
+  @@map("users")
+}
+
+// Driver e Vehicle foram movidos para o Driver Service (driver_db :5433).
+// O BFF persiste apenas uma réplica dos dados de motoristas via Kafka CDC.
+// Veja: DriverReplica ↓
+
+model Ride {
+  id            String     @id @default(uuid())
+  userId        String
+  driverId      String?    // referência ao ID do Driver Service (sem FK local)
+  status        RideStatus @default(PENDING)
+  originLat     Float
+  originLng     Float
+  originAddress String
+  destLat       Float
+  destLng       Float
+  destAddress   String
+  price         Decimal?   @db.Decimal(10, 2)
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  user          User       @relation(fields: [userId], references: [id])
+  payment       Payment?
+
+  @@map("rides")
+}
+
+model Payment {
+  id        String        @id @default(uuid())
+  rideId    String        @unique
+  amount    Decimal       @db.Decimal(10, 2)
+  method    PaymentMethod
+  status    PaymentStatus @default(PENDING)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  ride      Ride          @relation(fields: [rideId], references: [id])
+
+  @@map("payments")
+}
+
+enum RideStatus {
+  PENDING
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CREDIT_CARD
+  DEBIT_CARD
+  CASH
+  PIX
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+// Réplica local de dados de motoristas, sincronizada via Kafka CDC.
+// Fonte: driver_db (Driver Service) → Debezium → Kafka → consumer no BFF.
+// Campos de perfil completo para resolver Ride.driver sem chamar gRPC.
+model DriverReplica {
+  id          String   @id
+  name        String
+  email       String   @default("")
+  phone       String   @default("")
+  rating      Float    @default(5.0)
+  isActive    Boolean  @default(true)
+  lat         Float    @default(0)
+  lng         Float    @default(0)
+  isAvailable Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  syncedAt    DateTime @default(now()) @updatedAt
+
+  @@map("driver_replicas")
+}

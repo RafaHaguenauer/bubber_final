@@ -1,0 +1,190 @@
+syntax = "proto3";
+
+package driver;
+
+service DriverService {
+  // ── Hot-state (localização em tempo real) ─────────────────────────
+  rpc RegisterDriver    (RegisterDriverRequest)  returns (DriverResponse);
+  rpc UpdateLocation    (UpdateLocationRequest)  returns (StatusResponse);
+  rpc SetAvailability   (SetAvailabilityRequest) returns (StatusResponse);
+  rpc ListAvailable     (Empty)                  returns (DriverListResponse);
+  rpc FindNearestDriver (FindNearestRequest)     returns (NearestDriverResponse);
+
+  // ── Driver CRUD (perfil completo) ─────────────────────────────────
+  rpc CreateDriver     (CreateDriverRequest)     returns (DriverFullResponse);
+  rpc GetDriver        (GetDriverRequest)        returns (GetDriverResponse);
+  rpc GetDriverByEmail (GetDriverByEmailRequest) returns (GetDriverResponse);
+  rpc ListDrivers      (Empty)                   returns (DriverFullListResponse);
+  rpc UpdateDriver     (UpdateDriverRequest)     returns (DriverFullResponse);
+  rpc DeleteDriver     (DeleteDriverRequest)     returns (StatusResponse);
+
+  // ── Vehicle CRUD ───────────────────────────────────────────────────
+  rpc CreateVehicle        (CreateVehicleRequest)         returns (VehicleResponse);
+  rpc GetVehicle           (GetVehicleRequest)            returns (GetVehicleResponse);
+  rpc GetVehicleByPlate    (GetVehicleByPlateRequest)     returns (GetVehicleResponse);
+  rpc ListVehiclesByDriver (ListVehiclesByDriverRequest)  returns (VehicleListResponse);
+  rpc UpdateVehicle        (UpdateVehicleRequest)         returns (VehicleResponse);
+  rpc DeleteVehicle        (DeleteVehicleRequest)         returns (StatusResponse);
+}
+
+// ── Shared ─────────────────────────────────────────────────────────
+message Empty {}
+
+message StatusResponse {
+  bool   success = 1;
+  string message = 2;
+}
+
+// ── Hot-state messages ─────────────────────────────────────────────
+message RegisterDriverRequest {
+  string driver_id = 1;
+  string name      = 2;
+}
+
+message UpdateLocationRequest {
+  string driver_id = 1;
+  double lat       = 2;
+  double lng       = 3;
+}
+
+message SetAvailabilityRequest {
+  string driver_id    = 1;
+  bool   is_available = 2;
+}
+
+message FindNearestRequest {
+  double origin_lat = 1;
+  double origin_lng = 2;
+  double radius_km  = 3;
+}
+
+// DriverResponse: estado quente (localização + disponibilidade)
+message DriverResponse {
+  string id           = 1;
+  string name         = 2;
+  double lat          = 3;
+  double lng          = 4;
+  bool   is_available = 5;
+}
+
+message DriverListResponse {
+  repeated DriverResponse drivers = 1;
+}
+
+message NearestDriverResponse {
+  bool           found       = 1;
+  DriverResponse driver      = 2;
+  double         distance_km = 3;
+}
+
+// ── Driver CRUD messages ───────────────────────────────────────────
+// DriverFullResponse: perfil completo + hot-state
+message DriverFullResponse {
+  string id           = 1;
+  string name         = 2;
+  string email        = 3;
+  string phone        = 4;
+  string password     = 5;
+  double rating       = 6;
+  bool   is_active    = 7;
+  double lat          = 8;
+  double lng          = 9;
+  bool   is_available = 10;
+  string created_at   = 11;
+  string updated_at   = 12;
+}
+
+message CreateDriverRequest {
+  string id       = 1;
+  string name     = 2;
+  string email    = 3;
+  string phone    = 4;
+  string password = 5;
+}
+
+message GetDriverRequest {
+  string id = 1;
+}
+
+message GetDriverByEmailRequest {
+  string email = 1;
+}
+
+message GetDriverResponse {
+  bool               found  = 1;
+  DriverFullResponse driver = 2;
+}
+
+message UpdateDriverRequest {
+  string id        = 1;
+  string name      = 2;
+  string email     = 3;
+  string phone     = 4;
+  double rating    = 5;
+  bool   is_active = 6;
+}
+
+message DeleteDriverRequest {
+  string id = 1;
+}
+
+message DriverFullListResponse {
+  repeated DriverFullResponse drivers = 1;
+}
+
+// ── Vehicle CRUD messages ──────────────────────────────────────────
+message VehicleResponse {
+  string id         = 1;
+  string driver_id  = 2;
+  string plate      = 3;
+  string brand      = 4;
+  string model      = 5;
+  int32  year       = 6;
+  string color      = 7;
+  string created_at = 8;
+  string updated_at = 9;
+}
+
+message CreateVehicleRequest {
+  string id        = 1;
+  string driver_id = 2;
+  string plate     = 3;
+  string brand     = 4;
+  string model     = 5;
+  int32  year      = 6;
+  string color     = 7;
+}
+
+message GetVehicleRequest {
+  string id = 1;
+}
+
+message GetVehicleByPlateRequest {
+  string plate = 1;
+}
+
+message GetVehicleResponse {
+  bool            found   = 1;
+  VehicleResponse vehicle = 2;
+}
+
+message ListVehiclesByDriverRequest {
+  string driver_id = 1;
+}
+
+message VehicleListResponse {
+  repeated VehicleResponse vehicles = 1;
+}
+
+message UpdateVehicleRequest {
+  string id    = 1;
+  string plate = 2;
+  string brand = 3;
+  string model = 4;
+  int32  year  = 5;
+  string color = 6;
+}
+
+message DeleteVehicleRequest {
+  string id = 1;
+}

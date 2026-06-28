@@ -1,0 +1,37 @@
+{
+  "name": "bubber",
+  "version": "1.0.0",
+  "description": "Sistema inspirado no Uber — Disciplina de Arquitetura de Software CEFET/RJ",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "db:generate": "prisma generate"
+  },
+  "dependencies": {
+    "@apollo/server": "^4.11.0",
+    "@grpc/grpc-js": "^1.12.0",
+    "@grpc/proto-loader": "^0.7.13",
+    "@prisma/client": "^5.22.0",
+    "amqplib": "^2.0.1",
+    "dotenv": "^16.4.5",
+    "graphql": "^16.9.0",
+    "ioredis": "^5.11.1",
+    "kafkajs": "^2.2.4",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/amqplib": "^0.10.8",
+    "@types/node": "^22.9.0",
+    "prisma": "^5.22.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.9"
+  }
+}

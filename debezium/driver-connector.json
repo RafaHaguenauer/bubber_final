@@ -1,0 +1,30 @@
+{
+  "name": "bubber-driver-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+
+    "database.hostname": "postgres-driver",
+    "database.port": "5432",
+    "database.user": "postgres",
+    "database.password": "postgres",
+    "database.dbname": "driver_db",
+
+    "topic.prefix": "driver_db",
+    "table.include.list": "public.drivers",
+
+    "plugin.name": "pgoutput",
+    "slot.name": "bubber_driver_slot",
+    "publication.name": "bubber_driver_pub",
+    "publication.autocreate.mode": "filtered",
+
+    "snapshot.mode": "initial",
+    "heartbeat.interval.ms": "10000",
+
+    "transforms": "unwrap",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.drop.tombstones": "false",
+    "transforms.unwrap.delete.handling.mode": "rewrite",
+    "transforms.unwrap.add.fields": "op,table,source.ts_ms"
+  }
+}

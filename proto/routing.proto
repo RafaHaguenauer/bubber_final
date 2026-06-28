@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package routing;
+
+service RoutingService {
+  rpc CalculateRoute    (RouteRequest) returns (RouteResponse);
+  rpc CalculateDistance (RouteRequest) returns (DistanceResponse);
+}
+
+message RouteRequest {
+  double origin_lat = 1;
+  double origin_lng = 2;
+  double dest_lat   = 3;
+  double dest_lng   = 4;
+}
+
+message DistanceResponse {
+  double distance_km      = 1;
+  double duration_minutes = 2;
+}
+
+message RouteResponse {
+  double distance_km      = 1;
+  double duration_minutes = 2;
+  string polyline         = 3;
+}

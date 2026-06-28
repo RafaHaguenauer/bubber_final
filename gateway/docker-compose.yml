@@ -1,0 +1,31 @@
+version: '3.9'
+
+services:
+  kong:
+    image: kong:3.4-ubuntu
+    container_name: bubber_kong
+    environment:
+      KONG_DATABASE: "off"                                           # DB-less: sem banco extra
+      KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yaml
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"                            # porta dos clientes
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"                            # porta da Admin API
+      KONG_LOG_LEVEL: info
+      KONG_PLUGINS: bundled
+      KONG_NGINX_PROXY_READ_TIMEOUT: "30s"
+      KONG_NGINX_PROXY_CONNECT_TIMEOUT: "10s"
+      KONG_NGINX_PROXY_SEND_TIMEOUT: "30s"
+    ports:
+      - "8000:8000"     # Proxy — clientes acessam SOMENTE aqui
+      - "8001:8001"     # Admin API — apenas para gerenciamento local
+    volumes:
+      - ./kong.yaml:/kong/declarative/kong.yaml:ro
+    extra_hosts:
+      # Permite que o Kong (dentro do Docker) acesse o BFF rodando no host
+      # Windows/Mac: funciona automaticamente. Linux: este extra_hosts é necessário.
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped

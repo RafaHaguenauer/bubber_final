@@ -1,0 +1,39 @@
+# Dependências
+node_modules/
+services/driver-service/node_modules/
+services/routing-service/node_modules/
+services/notification-service/node_modules/
+
+# Variáveis de ambiente — nunca commitar
+.env
+services/driver-service/.env
+services/routing-service/.env
+services/notification-service/.env
+
+# Build
+dist/
+build/
+*.js.map
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Prisma — gerado automaticamente
+src/generated/
+services/driver-service/src/generated/
+
+# Docker volumes locais
+data/
+
+# Temporários
+*.tmp
+*.bak

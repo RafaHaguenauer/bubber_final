@@ -1,0 +1,73 @@
+@startuml Bubber-C3-BFF
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_TOP_DOWN()
+
+title [C3] Bubber — Componentes do GraphQL BFF (Arquitetura Hexagonal)
+
+Container_Ext(kong, "Kong API Gateway", "Kong 3.4", "Entrada pública")
+ContainerDb_Ext(pg_bff, "PostgreSQL BFF", "bubber_db :5432", "User, Ride, Payment, DriverReplica")
+Container_Ext(driver_svc, "Driver Service", "gRPC :50051", "CRUD Driver + Vehicle + hot-state")
+Container_Ext(routing_svc, "Routing Service", "gRPC :50052", "Cálculo de rotas")
+Container_Ext(redis, "Redis", ":6379", "Cache em memória")
+Container_Ext(rabbitmq, "RabbitMQ", ":5672", "Message broker")
+Container_Ext(kafka, "Apache Kafka", ":9092", "CDC events")
+
+Container_Boundary(bff, "GraphQL BFF — src/") {
+
+  ' ── Presentation Layer ───────────────────────────────────────────
+  Component(resolvers, "GraphQL Resolvers", "Apollo Server 4 / TypeScript\nsrc/presentation/graphql/resolvers/",
+    "Thin handlers que delegam ao container.\nUser, Driver, Vehicle, Ride, Payment,\nSmartRide (requestRide, updateDriverLocation)")
+
+  ' ── Application Layer ────────────────────────────────────────────
+  Component(use_cases, "Use Cases (Application Services)", "TypeScript\nsrc/application/use-cases/",
+    "28 use cases — uma classe por operação.\nCreateUser, GetUser, RequestRide,\nCreateDriver, CreateVehicle, etc.\nDepende apenas de interfaces (DIP)")
+
+  ' ── Domain Layer ─────────────────────────────────────────────────
+  Component(domain, "Domain Layer", "TypeScript\nsrc/domain/",
+    "Entities: User, Driver, Vehicle, Ride (Aggregate Root), Payment.\nValue Objects: Money, Coordinates, Email, Phone.\nPorts (saída): IDriverServicePort, IRoutingServicePort.\nRepositórios (saída): IUserRepository, IRideRepository, IPaymentRepository.\nDomain Service: RidePricingService")
+
+  ' ── Infrastructure Layer ─────────────────────────────────────────
+  Component(prisma_repos, "Prisma Repositories", "Prisma 5 / TypeScript\nsrc/infrastructure/database/repositories/",
+    "PrismaUserRepository, PrismaRideRepository,\nPrismaPaymentRepository.\nImplementam IUserRepository, IRideRepository, IPaymentRepository.\nMappers: UserMapper, RideMapper, PaymentMapper")
+
+  Component(grpc_adapters, "gRPC Adapters", "grpc-js / TypeScript\nsrc/infrastructure/grpc/",
+    "DriverGrpcAdapter: CRUD Driver/Vehicle + hot-state.\nRoutingGrpcAdapter: calculateRoute.\nImplementam IDriverServicePort e IRoutingServicePort (DIP)")
+
+  Component(kafka_consumer, "Kafka Consumer + Replication Handler", "kafkajs / TypeScript\nsrc/infrastructure/kafka/",
+    "KafkaConsumer: assina driver_db.public.drivers.\nDebeziumEventParser: parseia CDC (ExtractNewRecordState).\nDriverReplicationHandler: upsert/delete em driver_replicas")
+
+  Component(rabbitmq_pub, "RideEventPublisher", "amqplib / TypeScript\nsrc/infrastructure/messaging/",
+    "Publica ride.created, ride.completed, ride.cancelled\nno exchange bubber.events (topic).\nMensagens persistentes + messageId para idempotência")
+
+  Component(redis_cache, "CacheService", "ioredis / TypeScript\nsrc/infrastructure/cache/",
+    "Cache-Aside pattern.\nTTL: User/Driver 5min, Listas 2min,\nRide terminal (COMPLETED/CANCELLED) 30min.\nINVALIDATION automático em mutations")
+
+  ' ── Composition Root ─────────────────────────────────────────────
+  Component(container, "Composition Root", "TypeScript\nsrc/composition-root/container.ts",
+    "Wiring de todas as dependências.\nInstancia adaptadores, repositórios e\ninjeta nos use cases (Dependency Injection manual).\nExporta use case instances para os resolvers")
+}
+
+' ── Presentation ↔ Application ───────────────────────────────────
+Rel(kong, resolvers, "Requisições GraphQL autenticadas", "HTTP POST")
+Rel(resolvers, container, "Invoca use cases exportados", "TypeScript import")
+Rel(container, use_cases, "Instancia e injeta dependências", "Composition Root")
+
+' ── Application ↔ Domain ─────────────────────────────────────────
+Rel(use_cases, domain, "Usa entidades, VOs, interfaces\ne domain services", "TypeScript")
+
+' ── Infrastructure → Domain (via interfaces/DIP) ─────────────────
+Rel(prisma_repos, domain, "Implementa IUserRepository,\nIRideRepository, IPaymentRepository", "TypeScript")
+Rel(grpc_adapters, domain, "Implementa IDriverServicePort\ne IRoutingServicePort", "TypeScript")
+
+' ── Infrastructure ↔ External ────────────────────────────────────
+Rel(prisma_repos, pg_bff, "CRUD User, Ride, Payment,\nleitura DriverReplica", "Prisma 5 / SQL")
+Rel(grpc_adapters, driver_svc, "CRUD Driver/Vehicle,\nhot-state, FindNearestDriver", "gRPC proto3")
+Rel(grpc_adapters, routing_svc, "CalculateRoute", "gRPC proto3")
+Rel(kafka_consumer, kafka, "Consome CDC events\ndo driver_db", "kafkajs")
+Rel(kafka_consumer, pg_bff, "Upsert/delete em driver_replicas", "Prisma 5 / SQL")
+Rel(rabbitmq_pub, rabbitmq, "Publica ride events\nno exchange bubber.events", "AMQP 0-9-1")
+Rel(redis_cache, redis, "GET / SET / DEL cache keys", "ioredis / TCP")
+
+@enduml

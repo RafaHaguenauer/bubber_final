@@ -1,0 +1,66 @@
+@startuml Bubber-C3-DriverService
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_TOP_DOWN()
+
+title [C3] Bubber — Componentes do Driver Service (Hexagonal / SOLID)
+
+Container_Ext(bff, "GraphQL BFF", "gRPC client", "Chama Driver Service para CRUD e hot-state")
+Container_Ext(routing_svc, "Routing Service", "gRPC :50052", "Calcula distâncias reais entre coordenadas")
+ContainerDb_Ext(pg_driver, "PostgreSQL driver_db", "PostgreSQL 16 / WAL logical\n:5433", "Fonte única de verdade para\nDriver e Vehicle")
+Container_Ext(kafka, "Apache Kafka", "Kafka Connect / Debezium 2.4", "Captura WAL e publica CDC events\npara o BFF replicar em driver_replicas")
+
+Container_Boundary(driver_service, "Driver Service — services/driver-service/src/") {
+
+  Component(grpc_server, "gRPC Server", "grpc-js / TypeScript\nsrc/server.ts",
+    "Composition Root do Driver Service.\nCarrega driver.proto, registra todos\nos handlers no gRPC.Server.\nGraceful shutdown (SIGTERM)")
+
+  Component(handler, "DriverHandler", "TypeScript\nsrc/handlers/driver.handler.ts",
+    "SRP: traduz chamadas gRPC para chamadas ao DriverService e VehicleService.\nDIP: depende das abstrações (DriverService, VehicleService).\nWrap try/catch → gRPC error codes")
+
+  Component(driver_service_class, "DriverService", "TypeScript\nsrc/services/driver.service.ts",
+    "Regras de negócio de motoristas.\nCRUD: createDriver, getDriver, listDrivers, updateDriver, deleteDriver.\nHot-state: register, updateLocation, setAvailability, findNearestDriver.\nDIP: depende de IDriverRepository")
+
+  Component(vehicle_service_class, "VehicleService", "TypeScript\nsrc/services/vehicle.service.ts",
+    "Regras de negócio de veículos.\nCRUD: createVehicle, getVehicle, getVehicleByPlate,\nlistByDriver, updateVehicle, deleteVehicle.\nDIP: depende de IVehicleRepository")
+
+  Component(driver_repo_interface, "IDriverRepository / IVehicleRepository", "TypeScript\nsrc/repositories/IDriverRepository.ts",
+    "Portas de saída (Driven Ports).\nIDriverRepository: ISP — IDriverReader + IDriverWriter.\nIVehicleRepository: CRUD de Vehicle.\nOCP: novas implementações sem alterar handlers")
+
+  Component(driver_repo_impl, "PrismaDriverRepository", "Prisma 5 / TypeScript\nsrc/repositories/prisma.driver.repository.ts",
+    "Driven Adapter: persiste Driver no driver_db.\nCRUD completo: create, findById, findByEmail,\nfindAll, update, delete.\nHot-state: save (upsert), updateLocation,\nsetAvailability, listAvailable, findNearby (haversine)")
+
+  Component(vehicle_repo_impl, "PrismaVehicleRepository", "Prisma 5 / TypeScript\nsrc/repositories/prisma.vehicle.repository.ts",
+    "Driven Adapter: persiste Vehicle no driver_db.\nCRUD: create, findById, findByPlate,\nfindByDriverId, update, delete")
+
+  Component(routing_client, "RoutingGrpcClient", "grpc-js / TypeScript\nsrc/clients/routing.grpc.client.ts",
+    "Calcula distância entre dois pontos\nchamando o Routing Service via gRPC.\nUsado por DriverService.findNearestDriver()\npara refinar a ordem dos candidatos")
+}
+
+' ── External → Server ────────────────────────────────────────────
+Rel(bff, grpc_server, "Chama RPCs: CreateDriver, GetDriver,\nListDrivers, UpdateDriver, DeleteDriver,\nCreateVehicle, GetVehicle, RegisterDriver,\nUpdateLocation, FindNearestDriver...", "gRPC proto3")
+
+' ── Server → Handler ─────────────────────────────────────────────
+Rel(grpc_server, handler, "Despacha chamadas gRPC\npara os handlers registrados", "TypeScript")
+
+' ── Handler → Services ───────────────────────────────────────────
+Rel(handler, driver_service_class, "Delega operações de motorista\n(CRUD + hot-state)", "TypeScript")
+Rel(handler, vehicle_service_class, "Delega operações de veículo\n(CRUD)", "TypeScript")
+
+' ── Services → Repository Interfaces ────────────────────────────
+Rel(driver_service_class, driver_repo_interface, "IDriverRepository (leitura + escrita)", "TypeScript (DIP)")
+Rel(vehicle_service_class, driver_repo_interface, "IVehicleRepository", "TypeScript (DIP)")
+Rel(driver_service_class, routing_client, "calculateDistance() para\nfindNearestDriver", "TypeScript")
+
+' ── Repository Implementations → Interfaces ──────────────────────
+Rel(driver_repo_impl, driver_repo_interface, "Implementa IDriverRepository", "TypeScript")
+Rel(vehicle_repo_impl, driver_repo_interface, "Implementa IVehicleRepository", "TypeScript")
+
+' ── Repos → External ─────────────────────────────────────────────
+Rel(driver_repo_impl, pg_driver, "CRUD em tabela drivers\n(WAL → Debezium → Kafka)", "Prisma 5 / SQL")
+Rel(vehicle_repo_impl, pg_driver, "CRUD em tabela vehicles", "Prisma 5 / SQL")
+Rel(pg_driver, kafka, "WAL lógico capturado pelo\nDebezium connector", "Kafka Connect CDC")
+Rel(routing_client, routing_svc, "CalculateDistance", "gRPC proto3")
+
+@enduml

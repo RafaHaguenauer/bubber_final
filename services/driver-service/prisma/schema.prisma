@@ -1,0 +1,44 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Banco exclusivo do Driver Service (driver_db — porta 5433)
+// Cada write nesta tabela é capturado pelo Debezium via WAL lógico
+// e publicado no Kafka → BFF replica em driver_replicas (bubber_db).
+model Driver {
+  id          String    @id
+  name        String
+  email       String    @unique
+  phone       String    @unique
+  password    String
+  rating      Float     @default(5.0)
+  isActive    Boolean   @default(true)
+  lat         Float     @default(0)
+  lng         Float     @default(0)
+  isAvailable Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  vehicles    Vehicle[]
+
+  @@map("drivers")
+}
+
+model Vehicle {
+  id        String   @id
+  driverId  String
+  plate     String   @unique
+  brand     String
+  model     String
+  year      Int
+  color     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  driver    Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@map("vehicles")
+}

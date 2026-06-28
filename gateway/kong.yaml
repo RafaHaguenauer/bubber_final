@@ -1,0 +1,91 @@
+_format_version: "3.0"
+_transform: true
+
+# ─── Serviços upstream ────────────────────────────────────────────────────────
+# O Kong expõe APENAS o GraphQL BFF. Os gRPC services são internos.
+
+services:
+  - name: bubber-graphql
+    # host.docker.internal aponta para o host onde o BFF está rodando (localhost:4000)
+    host: host.docker.internal
+    port: 4000
+    protocol: http
+
+    # ── Timeouts (ms) ────────────────────────────────────────────────────────
+    connect_timeout: 10000   # 10s para estabelecer conexão com o BFF
+    write_timeout:   30000   # 30s para enviar a requisição
+    read_timeout:    30000   # 30s para aguardar a resposta
+
+    routes:
+      - name: graphql-route
+        paths:
+          - /graphql
+        methods:
+          - GET
+          - POST
+          - OPTIONS
+        strip_path: true    # remove o prefixo /graphql antes de encaminhar ao BFF
+                            # POST /graphql → POST http://host:4000/
+
+        # ── Auth: JWT obrigatório nesta rota ─────────────────────────────────
+        plugins:
+          - name: jwt
+            config:
+              claims_to_verify:
+                - exp            # valida que o token não expirou
+              key_claim_name: iss # Kong identifica o consumer pelo campo "iss" do JWT
+
+# ─── Plugins globais (aplicados a todas as rotas) ─────────────────────────────
+
+plugins:
+  # ── CORS: permite acesso cross-origin (browser → gateway) ──────────────────
+  - name: cors
+    config:
+      origins:
+        - "*"
+      methods:
+        - GET
+        - POST
+        - OPTIONS
+      headers:
+        - Authorization
+        - Content-Type
+      exposed_headers:
+        - X-RateLimit-Remaining-Minute
+      max_age: 3600
+      credentials: false
+
+  # ── Rate Limiting: protege contra abuso ────────────────────────────────────
+  - name: rate-limiting
+    config:
+      minute: 60          # máx 60 requisições por minuto por IP
+      hour:   1000        # máx 1000 por hora
+      policy: local       # contagem local (sem Redis — suficiente para 1 instância)
+      error_code: 429
+      error_message: "Limite de requisições atingido. Tente novamente em breve."
+
+  # ── Request Size Limiting: evita payloads gigantes ─────────────────────────
+  - name: request-size-limiting
+    config:
+      allowed_payload_size: 10   # máx 10 MB por requisição
+
+  # ── Request Transformer: adiciona header de identificação do gateway ────────
+  - name: request-transformer
+    config:
+      add:
+        headers:
+          - "X-Forwarded-By:bubber-kong-gateway"
+
+# ─── Consumers e credenciais JWT ──────────────────────────────────────────────
+# Um consumer por tipo de cliente. Em produção, cada consumer teria seu próprio secret.
+
+consumers:
+  - username: bubber-frontend
+    jwt_secrets:
+      - key: "bubber-issuer"                           # deve ser o "iss" do JWT
+        secret: "mude-em-producao-use-uma-chave-longa" # segredo HS256 para assinar
+
+  - username: bubber-mobile
+    jwt_secrets:
+      - key: "bubber-mobile-issuer"
+        secret: "mude-em-producao-chave-mobile-diferente"

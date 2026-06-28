@@ -1,0 +1,21 @@
+@startuml Bubber-C1-Contexto
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+LAYOUT_WITH_LEGEND()
+
+title [C1] Bubber — Diagrama de Contexto do Sistema
+
+Person(passageiro, "Passageiro", "Usuário que solicita corridas\npelo aplicativo")
+Person(motorista, "Motorista", "Profissional que aceita corridas\ne realiza o transporte")
+Person(admin, "Administrador", "Monitora o sistema, gera tokens\nJWT e gerencia consumidores Kong")
+
+System(bubber, "Bubber", "Plataforma de transporte compartilhado\nconstruída com microsserviços, GraphQL BFF,\ngRPC, Kong API Gateway e mensageria")
+
+System_Ext(osrm, "OSRM", "Open Source Routing Machine\nCalcula rotas, distâncias e tempos\nde viagem entre coordenadas GPS")
+
+Rel(passageiro, bubber, "Solicita corridas, acompanha status\ne visualiza histórico", "HTTPS / Kong :8000")
+Rel(motorista, bubber, "Registra-se, atualiza localização\ne gerencia disponibilidade", "HTTPS / Kong :8000")
+Rel(admin, bubber, "Monitora métricas, gerencia consumers\ne emite tokens JWT para testes", "HTTPS / Kong Admin :8001")
+Rel(bubber, osrm, "Calcula rota entre origem e destino;\nestima distância (km) e duração (min)", "HTTP REST")
+
+@enduml

@@ -1,0 +1,58 @@
+@startuml Bubber-C2-Container
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_TOP_DOWN()
+
+title [C2] Bubber — Diagrama de Containers
+
+Person(passageiro, "Passageiro")
+Person(motorista, "Motorista")
+
+System_Boundary(bubber, "Bubber — Plataforma de Transporte") {
+
+  Container(kong, "Kong API Gateway", "Kong 3.4 / Docker", "Ponto de entrada público.\nJWT Auth (HS256), Rate Limiting\n(60 req/min), CORS, Timeout,\nRequest-Size-Limiting")
+
+  Container(bff, "GraphQL BFF", "Apollo Server 4 / Node.js / TypeScript\n:4000", "Backend For Frontend.\nArquitetura Hexagonal + DDD.\n28 use cases, resolvers GraphQL,\ncache Redis e publicação RabbitMQ")
+
+  Container(driver_svc, "Driver Service", "Node.js / TypeScript / gRPC\n:50051", "Microsserviço de Motoristas.\nGerencia perfil completo (CRUD),\nlocalização em tempo real e\ndisponibilidade dos motoristas")
+
+  Container(routing_svc, "Routing Service", "Node.js / TypeScript / gRPC\n:50052", "Microsserviço de Roteamento.\nStrategy: OSRM (principal) +\nHaversine (fallback). Calcula\nrotas e distâncias")
+
+  Container(notif_svc, "Notification Service", "Node.js / TypeScript / amqplib", "Consumidor RabbitMQ.\nProcessa eventos de corrida\n(criada, concluída, cancelada).\nLazy Queue + DLQ (3 tentativas)")
+
+  ContainerDb(pg_bff, "PostgreSQL BFF", "PostgreSQL 16 / WAL logical\n:5432 — bubber_db", "Banco do BFF: User, Ride,\nPayment, DriverReplica.\nWAL habilitado para CDC")
+
+  ContainerDb(pg_driver, "PostgreSQL Driver", "PostgreSQL 16 / WAL logical\n:5433 — driver_db", "Banco exclusivo do Driver Service:\nDriver (perfil + hot-state),\nVehicle. CDC via Debezium")
+
+  Container(kafka, "Apache Kafka + Kafka Connect", "Confluent / Debezium 2.4\n:9092 / :8083", "Streaming de eventos CDC.\nDebezium captura WAL do driver_db\ne publica no tópico\ndriver_db.public.drivers")
+
+  Container(rabbitmq, "RabbitMQ", "RabbitMQ 3.13-management\n:5672 / :15672", "Message broker para notificações.\nExchange: bubber.events (topic).\nLazy Queue + DLQ.\nConexão entre BFF e Notification Service")
+
+  Container(redis, "Redis", "Redis 7.2-alpine\n:6379 / maxmemory 128mb allkeys-lru", "Cache em memória.\nCache-Aside pattern.\nTTL: 5min (perfis), 2min (listas),\n30min (corridas encerradas)")
+}
+
+System_Ext(osrm, "OSRM", "Open Source Routing Machine\nAPI HTTP de roteamento")
+
+Rel(passageiro, kong, "Envia requisições GraphQL", "HTTPS")
+Rel(motorista, kong, "Envia requisições GraphQL", "HTTPS")
+Rel(kong, bff, "Encaminha requisições autenticadas\nstrip /graphql → /", "HTTP")
+
+Rel(bff, driver_svc, "Registra motorista, atualiza posição,\nbusca motorista mais próximo,\nCRUD de Driver e Vehicle", "gRPC (proto3)")
+Rel(bff, routing_svc, "Calcula rota origem→destino\ne motorista→origem", "gRPC (proto3)")
+Rel(driver_svc, routing_svc, "Calcula distância para\nfindNearestDriver", "gRPC (proto3)")
+
+Rel(bff, pg_bff, "Lê/grava User, Ride, Payment;\nlê DriverReplica para hot-state", "Prisma 5 / TCP")
+Rel(driver_svc, pg_driver, "Lê/grava Driver e Vehicle;\nWAL lógico capturado pelo Debezium", "Prisma 5 / TCP")
+
+Rel(kafka, bff, "Entrega eventos CDC do driver_db\n(upsert/delete em driver_replicas)", "Kafka Consumer")
+Rel(pg_driver, kafka, "WAL lógico → Debezium connector\n→ tópico driver_db.public.drivers", "Kafka Connect CDC")
+
+Rel(bff, rabbitmq, "Publica ride.created,\nride.completed, ride.cancelled", "AMQP 0-9-1")
+Rel(rabbitmq, notif_svc, "Entrega eventos de corrida\npara processamento de notificações", "AMQP 0-9-1")
+
+Rel(bff, redis, "Lê/grava cache de User,\nDriver, Ride, Payment", "ioredis / TCP")
+
+Rel(routing_svc, osrm, "Calcula rota (fallback: Haversine\nse OSRM indisponível)", "HTTP REST")
+
+@enduml
